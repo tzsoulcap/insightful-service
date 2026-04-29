@@ -13,6 +13,20 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///./insightful.db"
 
+    # Dify Postgres Connection (if using Dify's Postgres for data storage, otherwise not needed)
+    POSTGRES_USER: str = "postgres"
+    POSTGRES_PASSWORD: str = "difyai123456"
+    POSTGRES_HOST: str = "localhost"
+    POSTGRES_PORT: int = 5432
+    POSTGRES_DB: str = "dify"
+    DIFY_STORAGE_PATH: str = "D:\\llm_dev\\dify\\docker\\volumes\\app\\storage"
+
+    # Dify Weaviate Connection
+    DIFY_WEAVIATE_KEY: str = "weaviate_key_placeholder"
+    DIFY_WEAVIATE_HOST: str = "http://localhost"
+    DIFY_WEAVIATE_PORT: int = 8080
+    DIFY_WEAVIATE_GRPC_PORT: int = 50051
+
     # Dify
     DIFY_BASE_URL: str = "https://api.dify.ai/v1"
     DIFY_API_KEY: str = ""

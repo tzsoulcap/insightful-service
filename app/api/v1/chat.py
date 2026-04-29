@@ -40,6 +40,7 @@ async def chat(
         user=dify_user,
         conversation_id=body.conversation_id,
         inputs=body.inputs,
+        auto_generate_name=body.auto_generate_name,
     )
 
     return StreamingResponse(event_stream, media_type="text/event-stream")

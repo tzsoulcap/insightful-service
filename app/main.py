@@ -4,6 +4,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.chat import router as chat_router
+from app.api.v1.citation import router as citation_router
+from app.api.v1.conversations import router as conversations_router
+from app.api.v1.image_proxy import router as image_proxy_router
+from app.api.v1.weaviate import router as weaviate_router
 from app.core.config import get_settings
 from app.core.database import Base, engine
 
@@ -14,6 +18,8 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
+    # Cleanly close DB connections on shutdown
+    await engine.dispose()
 
 
 settings = get_settings()
@@ -31,9 +37,16 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
 
-app.include_router(chat_router, prefix="/v1")
+api_prefix = "/v1"
+
+app.include_router(chat_router, prefix=api_prefix)
+app.include_router(citation_router)
+app.include_router(conversations_router, prefix=api_prefix)
+app.include_router(image_proxy_router, prefix=api_prefix)
+app.include_router(weaviate_router, prefix=api_prefix)
 
 
 @app.get("/health")

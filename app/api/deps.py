@@ -14,8 +14,11 @@ async def get_user_id(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> str:
     # Read from the dynamically configured header name (default: X-User-Id)
-
+    # print(request.headers)
     user_id = request.headers.get(settings.USER_ID_HEADER)
+    if user_id is None:
+        user_id = "admin"
+        print(f"Not Found \"X-User-Id\" header. Using default user: {user_id}")
     # print(f"Extracted user_id from header {settings.USER_ID_HEADER}: {user_id}")
     if not user_id:
         raise HTTPException(
