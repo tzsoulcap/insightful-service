@@ -97,14 +97,12 @@ class DifyService:
     async def chat_stream(
         self,
         query: str,
-        dataset_ids: list[str],
         user: str,
         conversation_id: str | None = None,
         inputs: dict | None = None,
         auto_generate_name: bool = False,
     ) -> AsyncGenerator[str, None]:
         merged_inputs = dict(inputs or {})
-        merged_inputs["dataset_ids"] = dataset_ids
 
         payload: dict = {
             "query": query,

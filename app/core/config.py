@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     # AD / Auth — configurable header name for user identification
     USER_ID_HEADER: str = "X-User-Id"
 
+    # JWT
+    JWT_SECRET_KEY: str = "change-me-to-a-random-secret"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 60
+
     # CORS
     CORS_ORIGINS: list[str] = ["*"]
 
