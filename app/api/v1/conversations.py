@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import Annotated, Literal
 
@@ -14,12 +13,8 @@ from app.schemas.conversation import (
     MessagesResponse,
     RenameConversationRequest,
 )
-from app.services.citation_service import (
-    SEGMENT_QUERY,
-    collection_name_for_dataset,
-    get_page_from_weaviate,
-)
 from app.services.dify import DifyService
+from app.services.enrichment_service import enrich_messages
 
 logger = logging.getLogger(__name__)
 
@@ -50,41 +45,13 @@ async def get_messages(
             detail="Failed to retrieve messages from Dify",
         )
 
-    # Enrich each retriever_resource with page_number, file_name, pdf_url
-    for message in data.get("data", []):
-        for resource in message.get("retriever_resources", []):
-            segment_id = resource.get("segment_id")
-            if not segment_id:
-                continue
-
-            try:
-                result = await session.execute(SEGMENT_QUERY, {"segment_id": segment_id})
-                row = result.first()
-            except Exception as exc:
-                logger.warning("DB lookup failed for segment %s: %s", segment_id, exc)
-                continue
-
-            if row is None:
-                continue
-
-            file_key: str = row.file_key
-            col_name = collection_name_for_dataset(str(row.dataset_id))
-
-            try:
-                page_number = await asyncio.to_thread(
-                    get_page_from_weaviate, settings, col_name, str(row.index_node_id)
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Weaviate lookup failed for segment %s: %s", segment_id, exc
-                )
-                page_number = None
-
-            resource["enriched_metadata"] = {
-                "page_number": page_number,
-                "file_name": row.file_name,
-                "pdf_url": str(request.url_for("view_pdf", file_key=file_key)),
-            }
+    # Batch enrich all retriever_resources with page_number, file_name, pdf_url
+    await enrich_messages(
+        data=data,
+        session=session,
+        settings=settings,
+        pdf_url_builder=lambda fk: str(request.url_for("view_pdf", file_key=fk)),
+    )
 
     return MessagesResponse(**data)
 
