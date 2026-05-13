@@ -9,16 +9,26 @@ from app.core.config import Settings
 
 logger = logging.getLogger(__name__)
 
+_DATASET_TIMEOUT = httpx.Timeout(60.0, connect=10.0)
+
 
 class DifyService:
     def __init__(self, settings: Settings) -> None:
         self._base_url = settings.DIFY_BASE_URL.rstrip("/")
         self._api_key = settings.DIFY_API_KEY
+        self._knowledge_api_key = settings.DIFY_KNOWLEDGE_API_KEY
 
     @property
     def _auth_headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
+
+    @property
+    def _knowledge_auth_headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self._knowledge_api_key}",
             "Content-Type": "application/json",
         }
 
@@ -35,6 +45,24 @@ class DifyService:
                 method,
                 f"{self._base_url}{path}",
                 headers=self._auth_headers,
+                params=params,
+                json=payload,
+            )
+        return response
+
+    async def _knowledge_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict | None = None,
+        payload: Any = None,
+    ) -> httpx.Response:
+        async with httpx.AsyncClient(timeout=_DATASET_TIMEOUT) as client:
+            response = await client.request(
+                method,
+                f"{self._base_url}{path}",
+                headers=self._knowledge_auth_headers,
                 params=params,
                 json=payload,
             )
@@ -143,3 +171,90 @@ class DifyService:
                         continue
                     else:
                         yield f"data: {line}\n\n"
+
+    # ── Knowledge Bases ───────────────────────────────────────────────────────
+
+    async def list_datasets(
+        self,
+        page: int = 1,
+        limit: int = 20,
+        keyword: str | None = None,
+        include_all: bool = False,
+        tag_ids: list[str] | None = None,
+    ) -> dict:
+        params: dict = {"page": page, "limit": limit, "include_all": include_all}
+        if keyword:
+            params["keyword"] = keyword
+        if tag_ids:
+            params["tag_ids"] = tag_ids
+        response = await self._knowledge_request("GET", "/datasets", params=params)
+        response.raise_for_status()
+        return response.json()
+
+    async def create_dataset(self, payload: dict) -> dict:
+        response = await self._knowledge_request("POST", "/datasets", payload=payload)
+        response.raise_for_status()
+        return response.json()
+
+    async def get_dataset(self, dataset_id: str) -> dict:
+        response = await self._knowledge_request("GET", f"/datasets/{dataset_id}")
+        response.raise_for_status()
+        return response.json()
+
+    async def delete_dataset(self, dataset_id: str) -> None:
+        response = await self._knowledge_request("DELETE", f"/datasets/{dataset_id}")
+        response.raise_for_status()
+
+    # ── Documents ─────────────────────────────────────────────────────────────
+
+    async def list_documents(
+        self,
+        dataset_id: str,
+        page: int = 1,
+        limit: int = 20,
+        keyword: str | None = None,
+        status: str | None = None,
+    ) -> dict:
+        params: dict = {"page": page, "limit": limit}
+        if keyword:
+            params["keyword"] = keyword
+        if status:
+            params["status"] = status
+        response = await self._knowledge_request("GET", f"/datasets/{dataset_id}/documents", params=params)
+        response.raise_for_status()
+        return response.json()
+
+    async def create_document_by_text(self, dataset_id: str, payload: dict) -> dict:
+        response = await self._knowledge_request(
+            "POST", f"/datasets/{dataset_id}/document/create-by-text", payload=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def create_document_by_file(
+        self, dataset_id: str, file_content: bytes, filename: str, data_json: str
+    ) -> dict:
+        files = {"file": (filename, file_content)}
+        form = {"data": data_json}
+        async with httpx.AsyncClient(timeout=_DATASET_TIMEOUT) as client:
+            response = await client.post(
+                f"{self._base_url}/datasets/{dataset_id}/document/create-by-file",
+                headers={"Authorization": f"Bearer {self._knowledge_api_key}"},
+                files=files,
+                data=form,
+            )
+        response.raise_for_status()
+        return response.json()
+
+    async def delete_document(self, dataset_id: str, document_id: str) -> None:
+        response = await self._knowledge_request(
+            "DELETE", f"/datasets/{dataset_id}/documents/{document_id}"
+        )
+        response.raise_for_status()
+
+    async def get_indexing_status(self, dataset_id: str, batch: str) -> dict:
+        response = await self._knowledge_request(
+            "GET", f"/datasets/{dataset_id}/documents/{batch}/indexing-status"
+        )
+        response.raise_for_status()
+        return response.json()

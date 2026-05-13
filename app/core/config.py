@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     # Dify
     DIFY_BASE_URL: str = "https://api.dify.ai/v1"
     DIFY_API_KEY: str = ""
+    DIFY_KNOWLEDGE_API_KEY: str = ""
 
     # AD / Auth — configurable header name for user identification
     USER_ID_HEADER: str = "X-User-Id"

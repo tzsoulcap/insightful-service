@@ -12,3 +12,7 @@ packaging>=23.0
 bcrypt>=4.0.0
 python-jose[cryptography]>=3.3.0
 python-multipart>=0.0.9
+docker>=7.1.0
+PyMuPDF>=1.27.2
+typhoon_ocr>=0.4.1
+beautifulsoup4>=4.14.3
