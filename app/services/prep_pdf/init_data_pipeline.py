@@ -58,6 +58,8 @@ MAX_TOKENS_CAP   = 8192   # vLLM server max; original model requests 16384
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 FONT_TTF_PATH = str(_PROJECT_ROOT / "Sarabun-Regular.ttf")
 FONT_NAME     = "ThaiSarabun"
+FONT_JP_TTF_PATH = str(_PROJECT_ROOT / "NotoSansJP-Regular.ttf")
+FONT_JP_NAME     = "NotoSansJP"
 
 # ============================================================
 # Monkey-patch: cap max_tokens for 8k vLLM server
@@ -80,17 +82,28 @@ _oai_completions.Completions.create = _patched_create
 # ============================================================
 
 def _setup_font() -> str:
-    """Register Thai font with ReportLab. Falls back to Helvetica if not found."""
+    """Register Thai/Latin and Japanese fonts with ReportLab. Falls back to Helvetica if not found."""
     if os.path.exists(FONT_TTF_PATH):
         try:
             pdfmetrics.registerFont(TTFont(FONT_NAME, FONT_TTF_PATH))
             log.info("Font registered: %s from %s", FONT_NAME, FONT_TTF_PATH)
-            return FONT_NAME
         except Exception as exc:
             log.warning("Could not register font %s: %s. Falling back to Helvetica.", FONT_TTF_PATH, exc)
+            return "Helvetica"
     else:
         log.warning("Font file not found: %s. Falling back to Helvetica.", FONT_TTF_PATH)
-    return "Helvetica"
+        return "Helvetica"
+
+    if os.path.exists(FONT_JP_TTF_PATH):
+        try:
+            pdfmetrics.registerFont(TTFont(FONT_JP_NAME, FONT_JP_TTF_PATH))
+            log.info("Font registered: %s from %s", FONT_JP_NAME, FONT_JP_TTF_PATH)
+        except Exception as exc:
+            log.warning("Could not register JP font %s: %s.", FONT_JP_TTF_PATH, exc)
+    else:
+        log.warning("JP font file not found: %s.", FONT_JP_TTF_PATH)
+
+    return FONT_NAME
 
 
 _CURRENT_FONT = _setup_font()
@@ -262,10 +275,36 @@ def format_ocr_page(text: str) -> str:
 
 # ---------- 5. Embed invisible text layer --------------------
 
+# Regex matching CJK characters (Japanese Hiragana, Katakana, Kanji, Korean)
+_CJK_RE = re.compile(r'[\u3040-\u30ff\u31f0-\u31ff\u4e00-\u9faf\uac00-\ud7af]+')
+
+
+def _text_segments(text: str) -> list[tuple[str, str]]:
+    """
+    Split a string into (font_name, chunk) segments.
+    CJK runs → FONT_JP_NAME (NotoSansJP)
+    Everything else → _CURRENT_FONT (Sarabun, covers Thai + Latin)
+    """
+    segments: list[tuple[str, str]] = []
+    pos = 0
+    for m in _CJK_RE.finditer(text):
+        if m.start() > pos:
+            segments.append((_CURRENT_FONT, text[pos:m.start()]))
+        segments.append((FONT_JP_NAME, m.group()))
+        pos = m.end()
+    if pos < len(text):
+        segments.append((_CURRENT_FONT, text[pos:]))
+    return segments
+
+
 def embed_hidden_text_to_temp(base_pdf_path: str, text_list: list[str]) -> str:
     """
     Overlays an invisible (render mode 3) text layer on each page of base_pdf_path.
     text_list[i] supplies the text for page i; pages beyond len(text_list) get no text.
+
+    Text is split into font segments so Thai/Latin uses Sarabun and CJK uses NotoSansJP,
+    enabling correct search across all three languages in a single page.
+
     Writes the result to a temp file and returns its path.
     Caller is responsible for deleting the temp file when done.
     """
@@ -280,21 +319,29 @@ def embed_hidden_text_to_temp(base_pdf_path: str, text_list: list[str]) -> str:
         can    = canvas.Canvas(packet, pagesize=(width, height))
         text_content = text_list[i] if i < len(text_list) else ""
 
-        text_obj = can.beginText(10, height - 20)
-        text_obj.setTextRenderMode(3)   # Mode 3 = invisible (searchable but not shown)
-        text_obj.setFont(_CURRENT_FONT, 8)
-
+        y = height - 20
         for line in text_content.split("\n"):
-            text_obj.textLine(line)
+            if not line:
+                y -= 9   # blank line advance
+                continue
 
-        can.drawText(text_obj)
+            # Write each font-segment inline on the same y position
+            x = 10.0
+            for font_name, chunk in _text_segments(line):
+                can.setFont(font_name, 8)
+                can.setTextRenderMode(3)  # invisible
+                can.drawString(x, y, chunk)
+                x += can.stringWidth(chunk, font_name, 8)
+
+            y -= 9  # line height for font size 8
+
         can.save()
 
         # Merge original page visual + overlay
         packet.seek(0)
         overlay_pdf  = fitz.open("pdf", packet.read())
         new_page     = new_doc.new_page(width=width, height=height)
-        new_page.show_pdf_page(new_page.rect, doc, i)       # original visual
+        new_page.show_pdf_page(new_page.rect, doc, i)          # original visual
         new_page.show_pdf_page(new_page.rect, overlay_pdf, 0)  # invisible text on top
         overlay_pdf.close()
 

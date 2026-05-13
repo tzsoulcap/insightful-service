@@ -16,3 +16,4 @@ docker>=7.1.0
 PyMuPDF>=1.27.2
 typhoon_ocr>=0.4.1
 beautifulsoup4>=4.14.3
+reportlab>=4.5.1
