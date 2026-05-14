@@ -325,13 +325,13 @@ def embed_hidden_text_to_temp(base_pdf_path: str, text_list: list[str]) -> str:
                 y -= 9   # blank line advance
                 continue
 
-            # Write each font-segment inline on the same y position
-            x = 10.0
-            for font_name, chunk in _text_segments(line):
-                can.setFont(font_name, 8)
-                can.setTextRenderMode(3)  # invisible
-                can.drawString(x, y, chunk)
-                x += can.stringWidth(chunk, font_name, 8)
+            # Use PDFTextObject so setTextRenderMode is available
+            text_obj = can.beginText(10, y)
+            text_obj.setTextRenderMode(3)  # Mode 3 = invisible but searchable
+            for seg_font, chunk in _text_segments(line):
+                text_obj.setFont(seg_font, 8)
+                text_obj.textOut(chunk)  # advances cursor inline, no newline
+            can.drawText(text_obj)
 
             y -= 9  # line height for font size 8
 

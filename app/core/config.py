@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # AD / Auth — configurable header name for user identification
     USER_ID_HEADER: str = "X-User-Id"
 
+    # App version (bump manually on each release)
+    APP_VERSION: str = "0.1.0"
+
     # JWT
     JWT_SECRET_KEY: str = "change-me-to-a-random-secret"
     JWT_ALGORITHM: str = "HS256"
