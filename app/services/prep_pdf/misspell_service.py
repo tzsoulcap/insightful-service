@@ -6,9 +6,12 @@ Returns the corrected text, or the original if the call fails or returns no resu
 """
 
 import json
+import logging
 import re
 
 import httpx
+
+log = logging.getLogger(__name__)
 
 
 def correct_misspell(text: str, api_key: str, base_url: str) -> str:
@@ -24,8 +27,10 @@ def correct_misspell(text: str, api_key: str, base_url: str) -> str:
     Falls back to the original `text` on any error.
     """
     if not text.strip():
+        log.debug("      [misspell] Skipping empty text.")
         return text
 
+    log.info("      [misspell] Sending %d chars to %s …", len(text), base_url)
     url = f"{base_url.rstrip('/')}/chat-messages"
     headers = {
         "Content-Type": "application/json",
@@ -44,7 +49,9 @@ def correct_misspell(text: str, api_key: str, base_url: str) -> str:
         response = httpx.post(url, json=payload, headers=headers, timeout=360)
         response.raise_for_status()
         answer: str = response.json().get("answer", "")
-    except Exception:
+        log.info("      [misspell] Response received (%d chars).", len(answer))
+    except Exception as exc:
+        log.warning("      [misspell] Request failed (%s) — using original text.", exc)
         return text  # fallback: return original on network / parse error
 
     # Strip <think>...</think> reasoning block if present
@@ -61,8 +68,10 @@ def correct_misspell(text: str, api_key: str, base_url: str) -> str:
             result = json.loads(match.group(1))
             corrected = result.get("CORRECTED")
             if corrected:
+                log.info("      [misspell] Correction applied (%d → %d chars).", len(text), len(corrected))
                 return corrected
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as exc:
+            log.warning("      [misspell] JSON parse error (%s) — using original text.", exc)
 
+    log.warning("      [misspell] Could not extract CORRECTED field — using original text.")
     return text  # fallback: return original if parsing fails
