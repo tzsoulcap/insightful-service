@@ -114,25 +114,31 @@ _CURRENT_FONT = _setup_font()
 
 # ---------- 1. Classify PDF ----------------------------------
 
-def classify_pdf(pdf_path: str, sample_pages: int = 2) -> str:
+def classify_pdf(pdf_path: str) -> str:
     """
+    Reads ALL pages to detect mixed PDFs (some pages have text, some are scanned).
     Returns:
-        'NORMAL_TEXT'      — readable text layer, minimal noise
-        'CORRUPT_ENCODING' — text layer present but garbled characters
-        'SCANNED_PDF'      — image-only, no text layer
+        'NORMAL_TEXT'      — all pages have a readable text layer, minimal noise
+        'CORRUPT_ENCODING' — text layer present on all pages but garbled characters
+        'SCANNED_PDF'      — at least one page has no extractable text (image-only or mixed)
     """
     doc = fitz.open(pdf_path)
-    text = ""
-    for page in list(doc)[:sample_pages]:
-        text += page.get_text()
+    page_texts = [page.get_text() for page in doc]
     doc.close()
 
-    if len(text.strip()) < 50:
+    # If ANY page is empty → treat the whole document as SCANNED_PDF
+    # (mixed PDFs with partial text layers must be fully rasterized before embed)
+    if any(t.strip() == "" for t in page_texts):
+        return "SCANNED_PDF"
+
+    combined_text = "".join(page_texts)
+
+    if len(combined_text.strip()) < 50:
         return "SCANNED_PDF"
 
     safe_pattern = r'[\u0e00-\u0e7fa-zA-Z0-9\u3040-\u30ff\u4e00-\u9faf\s,.()\-/:\"\'\[\]]'
-    safe_chars   = len(re.findall(safe_pattern, text))
-    total_chars  = len(text)
+    safe_chars   = len(re.findall(safe_pattern, combined_text))
+    total_chars  = len(combined_text)
     noise_ratio  = 1 - (safe_chars / total_chars) if total_chars > 0 else 1
 
     if noise_ratio > 0.02:
@@ -418,14 +424,11 @@ def process_single_pdf(pdf_path: str, target_dir: str) -> dict:
 
         # ── CORRUPT_ENCODING or SCANNED_PDF ───────────────────
         else:
-            if pdf_type == "CORRUPT_ENCODING":
-                # Step 1 — rasterize to strip the broken text layer
-                log.info("  [1/4] Removing corrupt text layer (rasterizing) …")
-                ocr_source = remove_text_layer_to_temp(pdf_path)
-                temp_files.append(ocr_source)
-            else:
-                # SCANNED_PDF: already image-only, OCR directly from original
-                ocr_source = pdf_path
+            # Step 1 — rasterize every page to strip any text layer
+            # CORRUPT: removes garbled text; SCANNED: removes partial text on mixed-page PDFs
+            log.info("  [1/4] Rasterizing (removing any text layer) …")
+            ocr_source = remove_text_layer_to_temp(pdf_path)
+            temp_files.append(ocr_source)
 
             # Step 2 — OCR
             log.info("  [2/4] Running OCR on all pages …")
@@ -537,7 +540,7 @@ def main(root_path: str, target_path: str) -> None:
 # ============================================================
 
 if __name__ == "__main__":
-    ROOT_PATH   = r"D:\llm_dev\knowledge\data"
-    TARGET_PATH = r"D:\llm_dev\knowledge\output_prepared"
+    ROOT_PATH   = r"D:\llm_dev\knowledge\ATTG STD\ATTG std refer Thai legal"
+    TARGET_PATH = r"D:\llm_dev\knowledge\ATTG STD Prep"
 
     main(ROOT_PATH, TARGET_PATH)

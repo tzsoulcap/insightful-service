@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     DIFY_API_KEY: str = ""
     DIFY_KNOWLEDGE_API_KEY: str = ""
 
+    # Misspell Correction API
+    MISSPELL_API_KEY: str = ""
+    MISSPELL_BASE_URL: str = "http://localhost/v1"
+
     # AD / Auth — configurable header name for user identification
     USER_ID_HEADER: str = "X-User-Id"
 
