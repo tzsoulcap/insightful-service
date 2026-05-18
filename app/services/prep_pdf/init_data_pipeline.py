@@ -133,7 +133,9 @@ def classify_pdf(pdf_path: str) -> str:
 
     combined_text = "".join(page_texts)
 
-    if len(combined_text.strip()) < 50:
+    log.info("  Total chars extracted: %d", len(combined_text))
+
+    if len(combined_text.strip()) < 500:
         return "SCANNED_PDF"
 
     safe_pattern = r'[\u0e00-\u0e7fa-zA-Z0-9\u3040-\u30ff\u4e00-\u9faf\s,.()\-/:\"\'\[\]]'
