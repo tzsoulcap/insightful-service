@@ -2,6 +2,7 @@ import logging
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_dify_service, get_user_id
@@ -19,6 +20,14 @@ from app.services.enrichment_service import enrich_messages
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/conversations", tags=["Conversations"])
+
+_GET_USER_CONVERSATION_IDS = text("""
+    SELECT c.id
+    FROM conversations c
+    WHERE c.from_end_user_id = (
+        SELECT id FROM end_users WHERE external_user_id = :user_id
+    )
+""")
 
 
 @router.get("/messages", response_model=MessagesResponse)
@@ -78,6 +87,43 @@ async def get_conversations(
             detail="Failed to retrieve conversations from Dify",
         )
     return ConversationsResponse(**data)
+
+
+@router.delete("", status_code=status.HTTP_200_OK)
+async def delete_all_conversations(
+    user_id: Annotated[str, Depends(get_user_id)],
+    service: Annotated[DifyService, Depends(get_dify_service)],
+    session: Annotated[AsyncSession, Depends(get_dify_db)],
+) -> dict:
+    # 1. Fetch all conversation IDs from Dify's Postgres
+    try:
+        result = await session.execute(_GET_USER_CONVERSATION_IDS, {"user_id": user_id})
+        conversation_ids = [str(row.id) for row in result.all()]
+    except Exception as exc:
+        logger.error("DB error fetching conversations for user %s: %s", user_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to fetch conversations from database",
+        )
+
+    if not conversation_ids:
+        return {"deleted": 0, "failed": 0, "conversation_ids": []}
+
+    # 2. Delete each conversation via Dify API
+    deleted, failed = [], []
+    for conv_id in conversation_ids:
+        try:
+            await service.delete_conversation(conversation_id=conv_id, user=user_id)
+            deleted.append(conv_id)
+        except Exception as exc:
+            logger.warning("Failed to delete conversation %s: %s", conv_id, exc)
+            failed.append(conv_id)
+
+    return {
+        "deleted": len(deleted),
+        "failed": len(failed),
+        "failed_ids": failed,
+    }
 
 
 @router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)

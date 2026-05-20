@@ -83,6 +83,11 @@ async def view_pdf(
     raw_path = os.path.join(settings.DIFY_STORAGE_PATH, file_key)
     resolved_path = os.path.realpath(raw_path)
 
+    # logging.info("Dify storage root: %s", storage_root)
+    # logging.info("Storage root is %s", storage_root)
+    # logging.info("Raw file path is %s", raw_path)
+    # logging.info("Resolved file path is %s", resolved_path)
+
     # Guard against path traversal
     if not resolved_path.startswith(storage_root + os.sep) and resolved_path != storage_root:
         raise HTTPException(
