@@ -201,6 +201,11 @@ class DifyService:
         response.raise_for_status()
         return response.json()
 
+    async def patch_dataset(self, dataset_id: str, payload: dict) -> dict:
+        response = await self._knowledge_request("PATCH", f"/datasets/{dataset_id}", payload=payload)
+        response.raise_for_status()
+        return response.json()
+
     async def delete_dataset(self, dataset_id: str) -> None:
         response = await self._knowledge_request("DELETE", f"/datasets/{dataset_id}")
         response.raise_for_status()

@@ -13,6 +13,7 @@ from app.schemas.knowledge_base import (
     IndexingStatusResponse,
     KnowledgeBaseItem,
     KnowledgeBaseListResponse,
+    UpdateKnowledgeBaseRequest,
 )
 from app.services.dify import DifyService
 
@@ -77,6 +78,19 @@ async def get_knowledge_base(
     return KnowledgeBaseItem(**data)
 
 
+@router.patch("/{dataset_id}", response_model=KnowledgeBaseItem)
+async def update_knowledge_base(
+    dataset_id: str,
+    body: UpdateKnowledgeBaseRequest,
+    service: Annotated[DifyService, Depends(get_dify_service)],
+) -> KnowledgeBaseItem:
+    try:
+        data = await service.patch_dataset(dataset_id, {"name": body.name})
+    except Exception as exc:
+        _handle_dify_error(exc)
+    return KnowledgeBaseItem(**data)
+
+
 @router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_knowledge_base(
     dataset_id: str,
@@ -110,6 +124,7 @@ async def list_documents(
         )
     except Exception as exc:
         _handle_dify_error(exc)
+    data["has_more"] = (page * max(1, min(limit, 100))) < data.get("total", 0)
     return DocumentListResponse(**data)
 
 

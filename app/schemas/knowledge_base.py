@@ -8,33 +8,33 @@ from pydantic import BaseModel
 class KnowledgeBaseItem(BaseModel):
     id: str
     name: str
-    description: str | None = None
-    provider: str | None = None
-    permission: str | None = None
-    data_source_type: str | None = None
-    indexing_technique: str | None = None
-    app_count: int = 0
-    document_count: int = 0
-    word_count: int = 0
-    created_by: str | None = None
-    author_name: str | None = None
-    created_at: int | None = None
-    updated_by: str | None = None
+    # description: str | None = None
+    # provider: str | None = None
+    # permission: str | None = None
+    # data_source_type: str | None = None
+    # indexing_technique: str | None = None
+    # app_count: int = 0
+    # document_count: int = 0
+    # word_count: int = 0
+    # created_by: str | None = None
+    # author_name: str | None = None
+    # created_at: int | None = None
+    # updated_by: str | None = None
     updated_at: int | None = None
-    embedding_model: str | None = None
-    embedding_model_provider: str | None = None
-    embedding_available: bool | None = None
-    retrieval_model_dict: dict[str, Any] | None = None
-    tags: list[Any] = []
-    doc_form: str | None = None
-    built_in_field_enabled: bool | None = None
-    is_published: bool | None = None
+    # embedding_model: str | None = None
+    # embedding_model_provider: str | None = None
+    # embedding_available: bool | None = None
+    # retrieval_model_dict: dict[str, Any] | None = None
+    # tags: list[Any] = []
+    # doc_form: str | None = None
+    # built_in_field_enabled: bool | None = None
+    # is_published: bool | None = None
     total_documents: int | None = None
     total_available_documents: int | None = None
-    enable_api: bool | None = None
-    is_multimodal: bool | None = None
+    # enable_api: bool | None = None
+    # is_multimodal: bool | None = None
 
-    model_config = {"extra": "allow"}
+    model_config = {"extra": "ignore"}
 
 
 class KnowledgeBaseListResponse(BaseModel):
@@ -48,7 +48,7 @@ class KnowledgeBaseListResponse(BaseModel):
 class VectorSetting(BaseModel):
     vector_weight: float = 0.6
     embedding_provider_name: str = "langgenius/ollama/ollama"
-    embedding_model_name: str = "jina-v5-retrieval"
+    embedding_model_name: str = "jina-v5-small-retrieval"
 
 
 class KeywordSetting(BaseModel):
@@ -71,18 +71,37 @@ class RetrievalModel(BaseModel):
     weights: RetrievalWeights = RetrievalWeights()
 
 
+class UpdateKnowledgeBaseRequest(BaseModel):
+    name: str
+
+
 class CreateKnowledgeBaseRequest(BaseModel):
     name: str
     description: str = ""
     indexing_technique: str = "high_quality"
     permission: str = "all_team_members"
     provider: str = "vendor"
-    embedding_model: str = "jina-v5-retrieval"
+    embedding_model: str = "jina-v5-small-retrieval"
     embedding_model_provider: str = "langgenius/ollama/ollama"
     retrieval_model: RetrievalModel = RetrievalModel()
 
 
 # ── Document ──────────────────────────────────────────────────────────────────
+class DocumentItemMinimal(BaseModel):
+    id: str
+    position: int | None = None
+    name: str | None = None
+    created_at: int | None = None
+    tokens: int | None = None
+    indexing_status: str | None = None
+    error: str | None = None
+    enabled: bool | None = None
+    display_status: str | None = None
+    word_count: int | None = None
+    hit_count: int | None = None
+
+
+    model_config = {"extra": "ignore"}
 
 class DocumentItem(BaseModel):
     id: str
@@ -95,7 +114,7 @@ class DocumentItem(BaseModel):
     created_from: str | None = None
     created_by: str | None = None
     created_at: int | None = None
-    tokens: int = 0
+    tokens: int | None = None
     indexing_status: str | None = None
     error: str | None = None
     enabled: bool = True
@@ -103,15 +122,15 @@ class DocumentItem(BaseModel):
     disabled_by: str | None = None
     archived: bool = False
     display_status: str | None = None
-    word_count: int = 0
-    hit_count: int = 0
+    word_count: int | None = None
+    hit_count: int | None = None
     doc_form: str | None = None
 
     model_config = {"extra": "allow"}
 
 
 class DocumentListResponse(BaseModel):
-    data: list[DocumentItem]
+    data: list[DocumentItemMinimal]
     has_more: bool
     limit: int
     total: int
