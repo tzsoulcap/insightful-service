@@ -10,6 +10,7 @@ from app.api.v1.conversations import router as conversations_router
 from app.api.v1.image_proxy import router as image_proxy_router
 from app.api.v1.knowledge_bases import router as knowledge_bases_router
 from app.api.v1.pdf_pipeline import router as pdf_pipeline_router
+from app.api.v1.users import router as users_router
 from app.api.v1.version import router as version_router
 from app.api.v1.weaviate import router as weaviate_router
 from app.core.config import get_settings
@@ -54,6 +55,7 @@ app.include_router(conversations_router, prefix=api_prefix)
 app.include_router(image_proxy_router, prefix=api_prefix)
 app.include_router(knowledge_bases_router, prefix=api_prefix)
 app.include_router(pdf_pipeline_router, prefix=api_prefix)
+app.include_router(users_router, prefix=api_prefix)
 app.include_router(version_router, prefix=api_prefix)
 app.include_router(weaviate_router, prefix=api_prefix)
 
