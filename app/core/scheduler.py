@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.services.batch_worker import run_batch
+from app.services.batch_worker import run_batch, run_single_file
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,20 @@ def schedule_batch(batch_id: str, run_date: datetime | None = None) -> None:
         max_instances=1,
     )
     logger.info("Scheduled batch %s at %s", batch_id, run_date)
+
+
+def schedule_single_file(batch_id: str, file_id: str) -> None:
+    """Schedule an immediate retry for a single file."""
+    scheduler.add_job(
+        run_single_file,
+        trigger="date",
+        run_date=datetime.now(timezone.utc),
+        args=[batch_id, file_id],
+        id=f"retry-{file_id}",
+        replace_existing=True,
+        max_instances=1,
+    )
+    logger.info("Scheduled retry for file %s in batch %s", file_id, batch_id)
 
 
 async def recover_pending_batches() -> None:

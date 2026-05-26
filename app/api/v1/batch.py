@@ -8,15 +8,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.auth import get_current_user
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.core.scheduler import schedule_batch
+from app.core.scheduler import schedule_batch, schedule_single_file
 from app.models.user import User
-from app.schemas.batch import BatchListResponse, BatchResponse, BatchSummaryResponse
+from app.schemas.batch import (
+    BatchByDatasetResponse,
+    BatchListResponse,
+    BatchResponse,
+    BatchSummaryResponse,
+    BatchTrackItem,
+    ProcessPdfItem,
+    ProcessPdfListResponse,
+)
 from app.services.batch_service import (
     create_batch,
     create_process_pdf,
     get_batch,
+    get_process_pdf,
+    get_process_pdfs_by_batch,
     list_batches,
+    list_batches_by_dataset,
+    reset_process_pdf_for_retry,
 )
+from app.models.batch import Batch
 
 router = APIRouter(prefix="/batches", tags=["Batches"])
 
@@ -104,6 +117,7 @@ async def create_batch_endpoint(
 # ── GET /batches ──────────────────────────────────────────────────────────────
 
 @router.get("", response_model=BatchListResponse)
+
 async def list_batches_endpoint(
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_db)],
@@ -124,6 +138,79 @@ async def list_batches_endpoint(
     )
 
 
+# ── GET /batches/by-dataset/{dataset_id} ─────────────────────────────────────
+
+_FAILED_STATUSES = {"error", "upload_failed"}
+_TERMINAL_STATUSES = {"error", "uploaded", "pending", "upload_failed"}
+
+
+def _build_track_item(batch: Batch) -> BatchTrackItem:
+    files = batch.files
+    success_count = sum(1 for f in files if f.status == "uploaded")
+    failed_count = sum(1 for f in files if f.status in _FAILED_STATUSES)
+    pending_count = sum(1 for f in files if f.status == "pending")
+    processing_count = sum(1 for f in files if f.status not in _TERMINAL_STATUSES)
+    return BatchTrackItem(
+        id=batch.id,
+        status=batch.status,
+        created_by=batch.created_by,
+        total_files=batch.total_files,
+        success_count=success_count,
+        failed_count=failed_count,
+        processing_count=processing_count,
+        pending_count=pending_count,
+        scheduled_at=batch.scheduled_at,
+        started_at=batch.started_at,
+        completed_at=batch.completed_at,
+        created_at=batch.created_at,
+        updated_at=batch.updated_at,
+    )
+
+
+@router.get("/by-dataset/{dataset_id}", response_model=BatchByDatasetResponse)
+async def list_batches_by_dataset_endpoint(
+    dataset_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    page: int = 1,
+    limit: int = 20,
+    sort: str = "created_at:desc",
+    status: str | None = None,
+) -> BatchByDatasetResponse:
+    clamped_limit = max(1, min(limit, 100))
+    batches, total = await list_batches_by_dataset(
+        session, dataset_id=dataset_id, page=page, limit=clamped_limit, sort=sort, status_filter=status
+    )
+    dataset_name = batches[0].dataset_name if batches else ""
+    return BatchByDatasetResponse(
+        dataset_id=dataset_id,
+        dataset_name=dataset_name,
+        data=[_build_track_item(b) for b in batches],
+        has_more=(page * clamped_limit) < total,
+        limit=clamped_limit,
+        total=total,
+        page=page,
+    )
+
+
+# ── GET /batches/{batch_id}/files ─────────────────────────────────────────────
+
+@router.get("/{batch_id}/files", response_model=ProcessPdfListResponse)
+async def list_process_pdfs_endpoint(
+    batch_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> ProcessPdfListResponse:
+    batch = await get_batch(session, batch_id)
+    if batch is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Batch not found")
+    files = await get_process_pdfs_by_batch(session, batch_id)
+    return ProcessPdfListResponse(
+        batch_id=batch_id,
+        data=[ProcessPdfItem.model_validate(f) for f in files],
+    )
+
+
 # ── GET /batches/{batch_id} ──────────────────────────────────────────────────
 
 @router.get("/{batch_id}", response_model=BatchResponse)
@@ -136,3 +223,37 @@ async def get_batch_endpoint(
     if batch is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Batch not found")
     return BatchResponse.model_validate(batch)
+
+# ── POST /batches/{batch_id}/files/{file_id}/retry ────────────────────────────
+
+_RETRYABLE_STATUSES = {"error", "upload_failed"}
+
+
+@router.post("/{batch_id}/files/{file_id}/retry", response_model=ProcessPdfItem, status_code=status.HTTP_202_ACCEPTED)
+async def retry_process_pdf_endpoint(
+    batch_id: str,
+    file_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> ProcessPdfItem:
+    batch = await get_batch(session, batch_id)
+    if batch is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Batch not found")
+
+    item = await get_process_pdf(session, file_id, batch_id=batch_id)
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found in this batch")
+
+    if item.status not in _RETRYABLE_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"File status '{item.status}' is not retryable (must be one of: {', '.join(sorted(_RETRYABLE_STATUSES))})",
+        )
+
+    await reset_process_pdf_for_retry(session, item)
+    await session.commit()
+    await session.refresh(item)
+
+    schedule_single_file(batch_id, file_id)
+
+    return ProcessPdfItem.model_validate(item)

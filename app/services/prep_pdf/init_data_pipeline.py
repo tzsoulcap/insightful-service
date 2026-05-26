@@ -42,16 +42,19 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 # ============================================================
-# CONFIG — edit these to match your environment
+# CONFIG — loaded from app settings / .env
 # ============================================================
+from app.core.config import get_settings as _get_settings
 
-OCR_MODEL        = "typhoon-ai/typhoon-ocr1.5-2b"
-OCR_BASE_URL     = "http://192.168.212.7:8002/v1"
-OCR_API_KEY      = "no-key"
-TARGET_IMAGE_DIM = 1500
-FIGURE_LANGUAGE  = "Thai"
-OCR_TASK_TYPE    = "v1.5"
-MAX_TOKENS_CAP   = 8192   # vLLM server max; original model requests 16384
+_settings = _get_settings()
+
+OCR_MODEL        = _settings.OCR_MODEL
+OCR_BASE_URL     = _settings.OCR_BASE_URL
+OCR_API_KEY      = _settings.OCR_API_KEY
+TARGET_IMAGE_DIM = _settings.OCR_TARGET_IMAGE_DIM
+FIGURE_LANGUAGE  = _settings.OCR_FIGURE_LANGUAGE
+OCR_TASK_TYPE    = _settings.OCR_TASK_TYPE
+MAX_TOKENS_CAP   = _settings.OCR_MAX_TOKENS_CAP   # vLLM server max; original model requests 16384
 
 # Sarabun-Regular.ttf is expected at the project root
 # (d:\GitHub\insightful-service\Sarabun-Regular.ttf)

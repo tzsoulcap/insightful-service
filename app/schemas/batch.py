@@ -62,3 +62,50 @@ class BatchListResponse(BaseModel):
     page: int
     limit: int
     has_more: bool
+
+
+# ── List by dataset ───────────────────────────────────────────────────────────
+
+class BatchTrackItem(BaseModel):
+    id: str
+    status: str
+    created_by: str | None = None
+    total_files: int
+    success_count: int
+    failed_count: int
+    processing_count: int
+    pending_count: int
+    scheduled_at: datetime | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class BatchByDatasetResponse(BaseModel):
+    dataset_id: str
+    dataset_name: str
+    data: list[BatchTrackItem]
+    has_more: bool
+    limit: int
+    total: int
+    page: int
+
+
+# ── Process PDF list ──────────────────────────────────────────────────────────
+
+class ProcessPdfItem(BaseModel):
+    id: str
+    filename: str
+    pdf_type: str | None = None
+    status: str
+    current_step: str | None = None
+    error_msg: str | None = None
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ProcessPdfListResponse(BaseModel):
+    batch_id: str
+    data: list[ProcessPdfItem]

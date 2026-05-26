@@ -53,6 +53,15 @@ class Settings(BaseSettings):
     # PDF batch processing
     PDF_STORAGE_PATH: str = "./pdf_original"
 
+    # OCR (Typhoon OCR)
+    OCR_MODEL: str = "typhoon-ai/typhoon-ocr1.5-2b"
+    OCR_BASE_URL: str = "http://localhost:8002/v1"
+    OCR_API_KEY: str = "no-key"
+    OCR_TARGET_IMAGE_DIM: int = 1500
+    OCR_FIGURE_LANGUAGE: str = "Thai"
+    OCR_TASK_TYPE: str = "v1.5"
+    OCR_MAX_TOKENS_CAP: int = 8192
+
 
 @lru_cache
 def get_settings() -> Settings:

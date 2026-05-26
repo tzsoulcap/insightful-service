@@ -5,6 +5,10 @@ import os
 import traceback
 from datetime import datetime, timezone
 
+import docker
+import docker.errors
+import httpx
+
 from app.core.config import get_settings
 from app.core.database import async_session
 from app.models.batch import Batch, ProcessPdf
@@ -20,6 +24,90 @@ from app.services.prep_pdf.init_data_pipeline import (
 from app.services.prep_pdf.misspell_service import correct_misspell
 
 logger = logging.getLogger(__name__)
+
+_OCR_CONTAINER_NAME = "vllm-vllm-1"
+_HEALTH_POLL_INTERVAL = 5   # seconds between health checks
+_HEALTH_POLL_MAX = 30       # max attempts
+_CONTAINER_BOOT_WAIT = 90  # seconds to wait after container.start()
+
+
+def _build_health_url(ocr_base_url: str) -> str:
+    # /v1/models is a reliable readiness indicator for vLLM:
+    # it only returns 200 once the model is fully loaded and ready for inference.
+    # /health returns 200 too early (while the model is still loading).
+    return ocr_base_url.rstrip("/") + "/models"
+
+
+async def _ensure_ocr_ready(settings) -> None:
+    """Make sure the OCR container is running and the vLLM server is healthy."""
+    health_url = _build_health_url(settings.OCR_BASE_URL)
+
+    # ── Check container status ──────────────────────────────────────────────
+    def _container_status() -> str:
+        try:
+            client = docker.from_env()
+            container = client.containers.get(_OCR_CONTAINER_NAME)
+            return container.status
+        except docker.errors.NotFound:
+            return "not_found"
+        except docker.errors.DockerException as exc:
+            logger.error("Docker error while checking OCR container: %s", exc)
+            return "docker_error"
+
+    container_status = await asyncio.to_thread(_container_status)
+    logger.info("OCR container '%s' status: %s", _OCR_CONTAINER_NAME, container_status)
+
+    if container_status not in ("running",):
+        if container_status in ("not_found", "docker_error"):
+            logger.warning("Cannot start OCR container (%s) — proceeding anyway", container_status)
+            return
+
+        # Start the stopped container
+        def _start_container() -> None:
+            client = docker.from_env()
+            container = client.containers.get(_OCR_CONTAINER_NAME)
+            container.start()
+
+        logger.info("Starting OCR container '%s' ...", _OCR_CONTAINER_NAME)
+        await asyncio.to_thread(_start_container)
+        logger.info("Waiting %d s for container to initialize ...", _CONTAINER_BOOT_WAIT)
+        await asyncio.sleep(_CONTAINER_BOOT_WAIT)
+
+    # ── Poll health endpoint ────────────────────────────────────────────────
+    logger.info("Polling OCR health: %s (max %d attempts)", health_url, _HEALTH_POLL_MAX)
+    async with httpx.AsyncClient(timeout=10.0) as hclient:
+        for attempt in range(1, _HEALTH_POLL_MAX + 1):
+            try:
+                resp = await hclient.get(health_url)
+                if resp.status_code == 200:
+                    logger.info("OCR service is ready (attempt %d/%d)", attempt, _HEALTH_POLL_MAX)
+                    return
+                logger.warning("Health check attempt %d/%d → HTTP %d", attempt, _HEALTH_POLL_MAX, resp.status_code)
+            except Exception as exc:
+                logger.warning("Health check attempt %d/%d failed: %s", attempt, _HEALTH_POLL_MAX, exc)
+            if attempt < _HEALTH_POLL_MAX:
+                await asyncio.sleep(_HEALTH_POLL_INTERVAL)
+
+    logger.error("OCR service not healthy after %d attempts — proceeding anyway", _HEALTH_POLL_MAX)
+
+
+async def _stop_ocr_container() -> None:
+    """Stop the OCR vLLM container after all files are processed."""
+    def _stop() -> None:
+        try:
+            client = docker.from_env()
+            container = client.containers.get(_OCR_CONTAINER_NAME)
+            if container.status == "running":
+                container.stop()
+                logger.info("OCR container '%s' stopped.", _OCR_CONTAINER_NAME)
+            else:
+                logger.info("OCR container '%s' already stopped (status: %s).", _OCR_CONTAINER_NAME, container.status)
+        except docker.errors.NotFound:
+            logger.warning("OCR container '%s' not found when stopping.", _OCR_CONTAINER_NAME)
+        except docker.errors.DockerException as exc:
+            logger.error("Failed to stop OCR container: %s", exc)
+
+    await asyncio.to_thread(_stop)
 
 # Default Dify upload payload (same as upload_pdfs.py)
 _UPLOAD_DATA_JSON = json.dumps({
@@ -203,6 +291,10 @@ async def run_batch(batch_id: str) -> None:
     # Process each file (each gets its own session)
     success_count = 0
     error_count = 0
+
+    # ── Ensure OCR container is running and healthy ───────────────────────────
+    await _ensure_ocr_ready(settings)
+
     for idx, item in enumerate(files, 1):
         logger.info("[%d/%d] Processing %s", idx, len(files), item.filename)
         await _process_single_file(item, batch.dataset_id, dify_service, settings)
@@ -214,6 +306,9 @@ async def run_batch(batch_id: str) -> None:
                 success_count += 1
             else:
                 error_count += 1
+
+    # ── Stop OCR container after last file ────────────────────────────────────
+    await _stop_ocr_container()
 
     # ── batch → completed ──
     async with async_session() as session:
@@ -229,3 +324,28 @@ async def run_batch(batch_id: str) -> None:
         "Batch %s done. Total: %d | Uploaded: %d | Failed: %d",
         batch_id, len(files), success_count, error_count,
     )
+
+
+async def run_single_file(batch_id: str, file_id: str) -> None:
+    """Retry a single ProcessPdf entry — called by the scheduler on retry requests."""
+    settings = get_settings()
+    dify_service = DifyService(settings)
+
+    logger.info("Retrying file %s in batch %s", file_id, batch_id)
+
+    async with async_session() as session:
+        batch = await get_batch(session, batch_id)
+        if batch is None:
+            logger.error("Batch %s not found for retry", batch_id)
+            return
+        item = await session.get(ProcessPdf, file_id)
+        if item is None or item.batch_id != batch_id:
+            logger.error("ProcessPdf %s not found in batch %s", file_id, batch_id)
+            return
+        dataset_id = batch.dataset_id
+
+    await _ensure_ocr_ready(settings)
+    await _process_single_file(item, dataset_id, dify_service, settings)
+    await _stop_ocr_container()
+
+    logger.info("Retry complete for file %s", file_id)
