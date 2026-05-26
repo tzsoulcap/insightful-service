@@ -9,6 +9,7 @@ from app.api.v1.chat import router as chat_router
 from app.api.v1.citation import router as citation_router
 from app.api.v1.conversations import router as conversations_router
 from app.api.v1.docker_mgmt import router as docker_router
+from app.api.v1.dify_storage import router as dify_storage_router
 from app.api.v1.image_proxy import router as image_proxy_router
 from app.api.v1.knowledge_bases import router as knowledge_bases_router
 from app.api.v1.pdf_pipeline import router as pdf_pipeline_router
@@ -62,6 +63,7 @@ app.include_router(chat_router, prefix=api_prefix)
 app.include_router(citation_router)
 app.include_router(conversations_router, prefix=api_prefix)
 app.include_router(docker_router, prefix=api_prefix)
+app.include_router(dify_storage_router, prefix=api_prefix)
 app.include_router(image_proxy_router, prefix=api_prefix)
 app.include_router(knowledge_bases_router, prefix=api_prefix)
 app.include_router(pdf_pipeline_router, prefix=api_prefix)
