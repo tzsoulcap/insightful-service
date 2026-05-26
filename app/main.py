@@ -4,9 +4,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.auth import router as auth_router
+from app.api.v1.batch import router as batch_router
 from app.api.v1.chat import router as chat_router
 from app.api.v1.citation import router as citation_router
 from app.api.v1.conversations import router as conversations_router
+from app.api.v1.docker_mgmt import router as docker_router
 from app.api.v1.image_proxy import router as image_proxy_router
 from app.api.v1.knowledge_bases import router as knowledge_bases_router
 from app.api.v1.pdf_pipeline import router as pdf_pipeline_router
@@ -15,6 +17,8 @@ from app.api.v1.version import router as version_router
 from app.api.v1.weaviate import router as weaviate_router
 from app.core.config import get_settings
 from app.core.database import Base, engine
+from app.core.scheduler import recover_pending_batches, scheduler
+import app.models.batch  # noqa: F401  — register Batch/ProcessPdf tables
 import app.models.user  # noqa: F401  — register User table with Base metadata
 
 
@@ -23,8 +27,12 @@ async def lifespan(app: FastAPI):
     # Create tables on startup (development convenience)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # Start scheduler and recover pending batches
+    scheduler.start()
+    await recover_pending_batches()
     yield
-    # Cleanly close DB connections on shutdown
+    # Shutdown scheduler and close DB connections
+    scheduler.shutdown(wait=False)
     await engine.dispose()
 
 
@@ -49,9 +57,11 @@ app.add_middleware(
 api_prefix = "/v1"
 
 app.include_router(auth_router, prefix=api_prefix)
+app.include_router(batch_router, prefix=api_prefix)
 app.include_router(chat_router, prefix=api_prefix)
 app.include_router(citation_router)
 app.include_router(conversations_router, prefix=api_prefix)
+app.include_router(docker_router, prefix=api_prefix)
 app.include_router(image_proxy_router, prefix=api_prefix)
 app.include_router(knowledge_bases_router, prefix=api_prefix)
 app.include_router(pdf_pipeline_router, prefix=api_prefix)

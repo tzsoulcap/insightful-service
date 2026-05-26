@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: list[str] = ["*"]
 
+    # PDF batch processing
+    PDF_STORAGE_PATH: str = "./pdf_original"
+
 
 @lru_cache
 def get_settings() -> Settings:
