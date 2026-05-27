@@ -1,10 +1,16 @@
 import json
+import shutil
 from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
+from sqlalchemy import delete as sa_delete
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_dify_service
+from app.core.config import Settings, get_settings
+from app.core.database import get_db
+from app.models.batch import Batch
 from app.schemas.knowledge_base import (
     CreateDocumentByTextRequest,
     CreateDocumentResponse,
@@ -95,11 +101,24 @@ async def update_knowledge_base(
 async def delete_knowledge_base(
     dataset_id: str,
     service: Annotated[DifyService, Depends(get_dify_service)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> Response:
     try:
         await service.delete_dataset(dataset_id)
     except Exception as exc:
         _handle_dify_error(exc)
+
+    # ── Delete original PDF folder ─────────────────────────────────────────────
+    import os
+    pdf_dir = os.path.join(settings.PDF_STORAGE_PATH, dataset_id)
+    if os.path.isdir(pdf_dir):
+        shutil.rmtree(pdf_dir, ignore_errors=True)
+
+    # ── Delete batch records (process_pdf cascades) ───────────────────────────
+    await session.execute(sa_delete(Batch).where(Batch.dataset_id == dataset_id))
+    await session.commit()
+
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
