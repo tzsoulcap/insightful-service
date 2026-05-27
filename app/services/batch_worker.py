@@ -14,6 +14,7 @@ from app.core.database import async_session
 from app.models.batch import Batch, ProcessPdf
 from app.services.batch_service import get_batch, update_batch_status, update_process_pdf
 from app.services.dify import DifyService
+from app.services.dify_cleanup import cleanup_dify_images
 from app.services.prep_pdf.init_data_pipeline import (
     classify_pdf,
     embed_hidden_text_to_temp,
@@ -310,6 +311,9 @@ async def run_batch(batch_id: str) -> None:
     # ── Stop OCR container after last file ────────────────────────────────────
     await _stop_ocr_container()
 
+    # ── Cleanup Dify image records + storage files ───────────────────────────
+    await cleanup_dify_images(batch.dataset_id, settings)
+
     # ── batch → completed ──
     async with async_session() as session:
         batch = await get_batch(session, batch_id)
@@ -347,5 +351,6 @@ async def run_single_file(batch_id: str, file_id: str) -> None:
     await _ensure_ocr_ready(settings)
     await _process_single_file(item, dataset_id, dify_service, settings)
     await _stop_ocr_container()
+    await cleanup_dify_images(dataset_id, settings)
 
     logger.info("Retry complete for file %s", file_id)

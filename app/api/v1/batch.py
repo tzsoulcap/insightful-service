@@ -87,7 +87,7 @@ async def create_batch_endpoint(
     )
 
     # ── Save files to disk + create process_pdf records ──
-    storage_dir = os.path.join(settings.PDF_STORAGE_PATH, dataset_name)
+    storage_dir = os.path.join(settings.PDF_STORAGE_PATH, dataset_id)
     os.makedirs(storage_dir, exist_ok=True)
 
     for f in files:
