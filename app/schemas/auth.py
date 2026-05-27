@@ -1,6 +1,6 @@
-from datetime import datetime
-
 from pydantic import BaseModel, Field
+
+from app.schemas.common import DatetimeTZ7
 
 
 class UserRequest(BaseModel):
@@ -13,8 +13,8 @@ class UserResponse(BaseModel):
     id: str
     username: str
     role: str
-    created_at: datetime
-    updated_at: datetime
+    created_at: DatetimeTZ7
+    updated_at: DatetimeTZ7
 
     model_config = {"from_attributes": True}
 

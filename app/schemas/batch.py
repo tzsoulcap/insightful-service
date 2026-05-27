@@ -1,6 +1,6 @@
-from datetime import datetime
-
 from pydantic import BaseModel
+
+from app.schemas.common import DatetimeTZ7
 
 
 # ── Process PDF item ──────────────────────────────────────────────────────────
@@ -15,8 +15,8 @@ class ProcessPdfResponse(BaseModel):
     error_msg: str | None = None
     dify_document_id: str | None = None
     dify_batch: str | None = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: DatetimeTZ7
+    updated_at: DatetimeTZ7
 
     model_config = {"from_attributes": True}
 
@@ -30,11 +30,11 @@ class BatchResponse(BaseModel):
     status: str
     total_files: int
     created_by: str | None = None
-    scheduled_at: datetime | None = None
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
-    created_at: datetime
-    updated_at: datetime
+    scheduled_at: DatetimeTZ7 | None = None
+    started_at: DatetimeTZ7 | None = None
+    completed_at: DatetimeTZ7 | None = None
+    created_at: DatetimeTZ7
+    updated_at: DatetimeTZ7
     files: list[ProcessPdfResponse] = []
 
     model_config = {"from_attributes": True}
@@ -47,11 +47,11 @@ class BatchSummaryResponse(BaseModel):
     status: str
     total_files: int
     created_by: str | None = None
-    scheduled_at: datetime | None = None
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
-    created_at: datetime
-    updated_at: datetime
+    scheduled_at: DatetimeTZ7 | None = None
+    started_at: DatetimeTZ7 | None = None
+    completed_at: DatetimeTZ7 | None = None
+    created_at: DatetimeTZ7
+    updated_at: DatetimeTZ7
 
     model_config = {"from_attributes": True}
 
@@ -75,11 +75,11 @@ class BatchTrackItem(BaseModel):
     failed_count: int
     processing_count: int
     pending_count: int
-    scheduled_at: datetime | None = None
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
-    created_at: datetime
-    updated_at: datetime
+    scheduled_at: DatetimeTZ7 | None = None
+    started_at: DatetimeTZ7 | None = None
+    completed_at: DatetimeTZ7 | None = None
+    created_at: DatetimeTZ7
+    updated_at: DatetimeTZ7
 
 
 class BatchByDatasetResponse(BaseModel):
@@ -101,7 +101,7 @@ class ProcessPdfItem(BaseModel):
     status: str
     current_step: str | None = None
     error_msg: str | None = None
-    updated_at: datetime
+    updated_at: DatetimeTZ7
 
     model_config = {"from_attributes": True}
 
