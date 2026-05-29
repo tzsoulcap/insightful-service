@@ -79,17 +79,17 @@ async def view_pdf(
     file_key: str,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> FileResponse:
-    storage_root = os.path.realpath(settings.DIFY_STORAGE_PATH)
-    raw_path = os.path.join(settings.DIFY_STORAGE_PATH, file_key)
-    resolved_path = os.path.realpath(raw_path)
+    # Resolve against PDF_STORAGE_PATH (our service) first, then DIFY_STORAGE_PATH (legacy)
+    resolved_path: str | None = None
+    for storage_base in [settings.PDF_STORAGE_PATH, settings.DIFY_STORAGE_PATH]:
+        storage_root = os.path.realpath(storage_base)
+        candidate = os.path.realpath(os.path.join(storage_base, file_key))
+        within_root = candidate.startswith(storage_root + os.sep) or candidate == storage_root
+        if within_root:
+            resolved_path = candidate
+            break
 
-    # logging.info("Dify storage root: %s", storage_root)
-    # logging.info("Storage root is %s", storage_root)
-    # logging.info("Raw file path is %s", raw_path)
-    # logging.info("Resolved file path is %s", resolved_path)
-
-    # Guard against path traversal
-    if not resolved_path.startswith(storage_root + os.sep) and resolved_path != storage_root:
+    if resolved_path is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied",

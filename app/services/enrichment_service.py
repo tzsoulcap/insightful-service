@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable
@@ -7,10 +8,11 @@ from typing import Callable
 import weaviate
 import weaviate.classes.init as wvc
 from weaviate.classes.query import Filter
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.core.database import async_session as _sqlite_session
 
 logger = logging.getLogger(__name__)
 
@@ -18,15 +20,19 @@ _BATCH_SEGMENT_QUERY = text("""
     SELECT
         ds.id            AS segment_id,
         ds.dataset_id,
-        ds.index_node_id,
-        uf.name          AS file_name,
-        uf.key           AS file_key
+        ds.index_node_id
     FROM document_segments ds
-    JOIN documents d  ON d.id = ds.document_id
-    JOIN upload_files uf
-        ON uf.id = (d.data_source_info::jsonb ->> 'upload_file_id')::uuid
     WHERE ds.id = ANY(:segment_ids)
 """)
+
+_BATCH_PDF_QUERY = (
+    text("""
+        SELECT filename, original_file_path, dify_document_id
+        FROM process_pdf
+        WHERE dify_document_id IN :doc_ids
+    """)
+    .bindparams(bindparam("doc_ids", expanding=True))
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +40,7 @@ class SegmentMeta:
     segment_id: str
     dataset_id: str
     index_node_id: str
+    document_id: str
     file_name: str
     file_key: str
 
@@ -115,13 +122,17 @@ async def enrich_messages(
     3. Single batch Weaviate call (in thread) -> page numbers
     4. Attach enriched_metadata to each resource
     """
-    # 1. Collect all segment_ids
+    # 1. Collect all segment_ids and document_ids
     resource_refs: list[tuple[dict, str]] = []
+    doc_id_by_sid: dict[str, str] = {}  # segment_id → document_id
     for message in data.get("data", []):
         for resource in message.get("retriever_resources", []):
             sid = resource.get("segment_id")
+            did = resource.get("document_id", "")
             if sid:
                 resource_refs.append((resource, sid))
+                if did:
+                    doc_id_by_sid[sid] = did
 
     if not resource_refs:
         return
@@ -138,14 +149,37 @@ async def enrich_messages(
         logger.warning("Batch DB lookup failed: %s", exc)
         return
 
+    # Build segment metadata (no file info yet)
+    seg_rows: dict[str, object] = {str(r.segment_id): r for r in rows}
+
+    # 2b. Batch SQLite query for file_name / file_key via document_id
+    unique_doc_ids = list({did for did in doc_id_by_sid.values() if did})
+    file_map: dict[str, tuple[str, str]] = {}  # dify_document_id → (file_name, file_key)
+    if unique_doc_ids:
+        try:
+            pdf_root = os.path.realpath(settings.PDF_STORAGE_PATH)
+            async with _sqlite_session() as sqlite_session:
+                pdf_result = await sqlite_session.execute(
+                    _BATCH_PDF_QUERY, {"doc_ids": unique_doc_ids}
+                )
+                for pdf_row in pdf_result.all():
+                    abs_path = os.path.realpath(pdf_row.original_file_path)
+                    rel_key = os.path.relpath(abs_path, pdf_root)
+                    file_map[pdf_row.dify_document_id] = (pdf_row.filename, rel_key)
+        except Exception as exc:
+            logger.warning("SQLite file lookup failed: %s", exc)
+
     meta_map: dict[str, SegmentMeta] = {}
-    for row in rows:
-        meta_map[str(row.segment_id)] = SegmentMeta(
-            segment_id=str(row.segment_id),
+    for sid, row in seg_rows.items():
+        did = doc_id_by_sid.get(sid, "")
+        file_name, file_key = file_map.get(did, ("", ""))
+        meta_map[sid] = SegmentMeta(
+            segment_id=sid,
             dataset_id=str(row.dataset_id),
             index_node_id=str(row.index_node_id),
-            file_name=row.file_name,
-            file_key=row.file_key,
+            document_id=did,
+            file_name=file_name,
+            file_key=file_key,
         )
 
     if not meta_map:
