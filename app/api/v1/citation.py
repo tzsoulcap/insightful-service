@@ -5,10 +5,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.core.database import async_session as _sqlite_session
 from app.core.dify_database import get_dify_db
 from app.services.citation_service import (
     SEGMENT_QUERY,
@@ -19,6 +21,13 @@ from app.services.citation_service import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["Citation"])
+
+_PDF_BY_DOC_ID = text("""
+    SELECT filename, original_file_path
+    FROM process_pdf
+    WHERE dify_document_id = :doc_id
+    LIMIT 1
+""")
 
 
 @router.get("/resolve-citation/{segment_id}")
@@ -47,10 +56,26 @@ async def resolve_citation(
 
     dataset_id: str = str(row.dataset_id)
     index_node_id: str = str(row.index_node_id)
-    file_name: str = row.file_name
-    file_key: str = row.file_key
+    document_id: str = str(row.document_id)
 
-    # 2. Fetch page number from Weaviate
+    # 2. Query SQLite for file info via dify_document_id
+    file_name = ""
+    file_key = ""
+    try:
+        async with _sqlite_session() as sqlite_session:
+            pdf_result = await sqlite_session.execute(
+                _PDF_BY_DOC_ID, {"doc_id": document_id}
+            )
+            pdf_row = pdf_result.first()
+            if pdf_row:
+                file_name = pdf_row.filename
+                pdf_root = os.path.realpath(settings.PDF_STORAGE_PATH)
+                abs_path = os.path.realpath(pdf_row.original_file_path)
+                file_key = os.path.relpath(abs_path, pdf_root)
+    except Exception as exc:
+        logger.warning("SQLite file lookup failed (document_id=%s): %s", document_id, exc)
+
+    # 3. Fetch page number from Weaviate
     collection_name = collection_name_for_dataset(dataset_id)
     try:
         page_number = await asyncio.to_thread(
@@ -63,8 +88,8 @@ async def resolve_citation(
         )
         page_number = None
 
-    # 3. Build PDF viewer URL
-    pdf_url = str(request.url_for("view_pdf", file_key=file_key))
+    # 4. Build PDF viewer URL
+    pdf_url = str(request.url_for("view_pdf", file_key=file_key)) if file_key else None
 
     return {
         "segment_id": segment_id,

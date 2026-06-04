@@ -13,12 +13,9 @@ SEGMENT_QUERY = text("""
     SELECT
         ds.dataset_id,
         ds.index_node_id,
-        uf.name  AS file_name,
-        uf.key   AS file_key
+        d.id AS document_id
     FROM document_segments ds
-    JOIN documents d  ON d.id = ds.document_id
-    JOIN upload_files uf
-        ON uf.id = (d.data_source_info::jsonb ->> 'upload_file_id')::uuid
+    JOIN documents d ON d.id = ds.document_id
     WHERE ds.id = :segment_id
     LIMIT 1
 """)
