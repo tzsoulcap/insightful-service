@@ -20,7 +20,7 @@ from app.services.citation_service import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1", tags=["Citation"])
+router = APIRouter(tags=["Citation"])
 
 _PDF_BY_DOC_ID = text("""
     SELECT filename, original_file_path

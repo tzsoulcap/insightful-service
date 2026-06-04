@@ -60,7 +60,7 @@ api_prefix = "/v1"
 app.include_router(auth_router, prefix=api_prefix)
 app.include_router(batch_router, prefix=api_prefix)
 app.include_router(chat_router, prefix=api_prefix)
-app.include_router(citation_router)
+app.include_router(citation_router, prefix=api_prefix)
 app.include_router(conversations_router, prefix=api_prefix)
 app.include_router(docker_router, prefix=api_prefix)
 app.include_router(dify_storage_router, prefix=api_prefix)
