@@ -8,7 +8,10 @@ from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.core.security import create_access_token, decode_access_token
 from app.models.user import User
-from app.schemas.auth import Token, UserRequest, UserResponse
+from ldap3 import ALL, Connection, Server
+from ldap3.core.exceptions import LDAPBindError, LDAPException
+
+from app.schemas.auth import LDAPLoginRequest, LDAPLoginResponse, Token, UserRequest, UserResponse
 from app.services.auth_service import authenticate_user, create_user, get_user_by_id, get_user_by_username
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -78,6 +81,39 @@ async def login(
         )
     access_token = create_access_token({"sub": user.id, "role": user.role}, settings)
     return Token(access_token=access_token)
+
+
+# ── POST /auth/ldap-login  (AD/LDAP test) ────────────────────────
+@router.post("/ldap-login", response_model=LDAPLoginResponse)
+async def ldap_login(
+    body: LDAPLoginRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    """Test LDAP/AD authentication against the configured LDAP server."""
+    if not settings.LDAP_SERVER_IP:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="LDAP server is not configured",
+        )
+
+    user_dn = f"{body.username}@{settings.LDAP_DOMAIN}"
+
+    try:
+        server = Server(settings.LDAP_SERVER_IP, get_info=ALL, connect_timeout=5)
+        conn = Connection(server, user=user_dn, password=body.password, raise_exceptions=True)
+        conn.bind()
+        conn.unbind()
+        return LDAPLoginResponse(success=True, message="Login สำเร็จ", user_dn=user_dn)
+    except LDAPBindError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="รหัสผ่านไม่ถูกต้อง หรือ username ไม่มีในระบบ",
+        )
+    except LDAPException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"ไม่สามารถเชื่อมต่อกับ LDAP Server: {exc}",
+        )
 
 
 # ── GET /auth/me  (protected) ───────────────────────────────────

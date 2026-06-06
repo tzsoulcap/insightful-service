@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///./insightful.db"
 
+    # LDAP
+    LDAP_SERVER_IP: str = ""
+    LDAP_DOMAIN: str = "attg.co.th"
+
     # Dify Postgres Connection (if using Dify's Postgres for data storage, otherwise not needed)
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "difyai123456"
@@ -40,7 +44,7 @@ class Settings(BaseSettings):
     USER_ID_HEADER: str = "X-User-Id"
 
     # App version (bump manually on each release)
-    APP_VERSION: str = "0.1.0"
+    APP_VERSION: str = "0.1.1"
 
     # JWT
     JWT_SECRET_KEY: str = "change-me-to-a-random-secret"

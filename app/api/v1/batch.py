@@ -34,7 +34,8 @@ from app.models.batch import Batch
 router = APIRouter(prefix="/batches", tags=["Batches"])
 
 _MAX_FILES = 10
-_MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+_MAX_SIZE_PER_FILE = 35
+_MAX_FILE_SIZE = _MAX_SIZE_PER_FILE * 1024 * 1024  # 35 MB
 
 
 # ── POST /batches ─────────────────────────────────────────────────────────────
@@ -72,7 +73,7 @@ async def create_batch_endpoint(
         if len(content) > _MAX_FILE_SIZE:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"File '{f.filename}' exceeds 10 MB limit",
+                detail=f"File '{f.filename}' exceeds {_MAX_SIZE_PER_FILE} MB limit",
             )
         await f.seek(0)
 

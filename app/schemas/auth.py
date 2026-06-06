@@ -32,6 +32,17 @@ class ResetPasswordRequest(BaseModel):
     new_password: str = Field(..., min_length=8, max_length=128)
 
 
+class LDAPLoginRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=150)
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+class LDAPLoginResponse(BaseModel):
+    success: bool
+    message: str
+    user_dn: str | None = None
+
+
 class UserListResponse(BaseModel):
     data: list[UserResponse]
     total: int
