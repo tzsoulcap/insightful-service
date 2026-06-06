@@ -55,6 +55,8 @@ async def recover_pending_batches() -> None:
                 batch.updated_at = datetime.now(timezone.utc)
                 await session.commit()
             run_date = batch.scheduled_at or datetime.now(timezone.utc)
+            if run_date.tzinfo is None:
+                run_date = run_date.replace(tzinfo=timezone.utc)
             if run_date < datetime.now(timezone.utc):
                 run_date = datetime.now(timezone.utc)
             schedule_batch(batch.id, run_date)
