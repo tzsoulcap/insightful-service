@@ -22,6 +22,7 @@ def schedule_batch(batch_id: str, run_date: datetime | None = None) -> None:
         id=f"batch-{batch_id}",
         replace_existing=True,
         max_instances=1,
+        misfire_grace_time=300,  # ยอมให้ช้าได้ 5 นาที
     )
     logger.info("Scheduled batch %s at %s", batch_id, run_date)
 
@@ -36,6 +37,7 @@ def schedule_single_file(batch_id: str, file_id: str) -> None:
         id=f"retry-{file_id}",
         replace_existing=True,
         max_instances=1,
+        misfire_grace_time=300,  # ยอมให้ช้าได้ 5 นาที
     )
     logger.info("Scheduled retry for file %s in batch %s", file_id, batch_id)
 
