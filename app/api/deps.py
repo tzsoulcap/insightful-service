@@ -1,3 +1,5 @@
+import logging
+
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
@@ -6,27 +8,38 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.auth import get_current_user
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
+from app.core.security import decode_access_token
 from app.models.user import User
 from app.repositories.knowledge_base import KnowledgeBaseRepository
 from app.repositories.user_permission import UserPermissionRepository
 from app.services.dify import DifyService
 from app.services.retrieval_service import RetrievalService
 
+logger = logging.getLogger(__name__)
+
 
 async def get_user_id(
     request: Request,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> str:
+    # 1. Legacy: X-User-Id header (kept for backward compat)
     user_id = request.headers.get(settings.USER_ID_HEADER)
-    if user_id is None:
-        user_id = "admin"
-        print(f"Not Found \"X-User-Id\" header. Using default user: {user_id}")
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Missing required header: {settings.USER_ID_HEADER}",
-        )
-    return user_id
+    if user_id:
+        return user_id
+
+    # 2. JWT Bearer token
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        payload = decode_access_token(token, settings)
+        if payload:
+            sub = payload.get("sub")
+            if sub:
+                return sub
+
+    # 3. Dev fallback — log clearly so it's obvious in logs
+    logger.warning("No auth found (no X-User-Id header, no valid JWT). Using fallback: guest")
+    return "guest"
 
 
 def get_repository(
