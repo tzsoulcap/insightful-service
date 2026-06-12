@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -6,7 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.auth import get_current_user
 from app.core.database import get_db
 from app.models.user import User
-from app.schemas.auth import ResetPasswordRequest, UpdateRoleRequest, UserListResponse, UserResponse
+from app.schemas.auth import (
+    ResetPasswordRequest,
+    UpdateRoleRequest,
+    UpdateUserRequest,
+    UserListResponse,
+    UserResponse,
+)
 from app.services.auth_service import (
     delete_user,
     get_all_users,
@@ -17,20 +24,31 @@ from app.services.auth_service import (
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
+_ADMIN_ROLES = {"admin", "super_admin"}
+
 
 def _require_admin(current_user: User) -> None:
-    if current_user.role != "admin":
+    if current_user.role not in _ADMIN_ROLES:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin role required",
         )
 
 
-async def _get_target_user(user_id: str, session: AsyncSession) -> User:
+async def _get_target_user(user_id: str | uuid.UUID, session: AsyncSession) -> User:
     user = await get_user_by_id(session, user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
+
+
+# ── GET /users/me ─────────────────────────────────────────────────────────────
+
+@router.get("/me", response_model=UserResponse)
+async def get_me(
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> UserResponse:
+    return UserResponse.model_validate(current_user)
 
 
 # ── GET /users ────────────────────────────────────────────────────────────────
@@ -68,7 +86,7 @@ async def list_users(
 
 @router.patch("/{user_id}/role", response_model=UserResponse)
 async def patch_user_role(
-    user_id: str,
+    user_id: uuid.UUID,
     body: UpdateRoleRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_db)],
@@ -77,6 +95,59 @@ async def patch_user_role(
     target = await _get_target_user(user_id, session)
     return await update_user_role(session, target, body.role)
 
+
+# ── PATCH /users/{user_id} ────────────────────────────────────────────────────
+
+@router.patch("/{user_id}", response_model=UserResponse)
+async def patch_user(
+    user_id: uuid.UUID,
+    body: UpdateUserRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> UserResponse:
+    _require_admin(current_user)
+    target = await _get_target_user(user_id, session)
+    if body.role is not None:
+        target.role = body.role
+    if body.is_active is not None:
+        target.is_active = body.is_active
+    await session.commit()
+    await session.refresh(target)
+    return UserResponse.model_validate(target)
+
+
+# ── PATCH /users/{user_id}/password ──────────────────────────────────────────
+
+@router.patch("/{user_id}/password", status_code=status.HTTP_204_NO_CONTENT)
+async def patch_user_password(
+    user_id: uuid.UUID,
+    body: ResetPasswordRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    _require_admin(current_user)
+    target = await _get_target_user(user_id, session)
+    await update_user_password(session, target, body.new_password)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ── DELETE /users/{user_id} ───────────────────────────────────────────────────
+
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user_endpoint(
+    user_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    _require_admin(current_user)
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete your own account",
+        )
+    target = await _get_target_user(user_id, session)
+    await delete_user(session, target)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 # ── PATCH /users/{user_id}/password ──────────────────────────────────────────
 

@@ -10,8 +10,8 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    # Database
-    DATABASE_URL: str = "sqlite+aiosqlite:///./insightful.db"
+    # Database (App's own PostgreSQL — not Dify's Postgres)
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5433/insightful"
 
     # LDAP
     LDAP_SERVER_IP: str = ""
@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     USER_ID_HEADER: str = "X-User-Id"
 
     # App version (bump manually on each release)
-    APP_VERSION: str = "0.1.1"
+    APP_VERSION: str = "0.2.0"
 
     # JWT
     JWT_SECRET_KEY: str = "change-me-to-a-random-secret"

@@ -1,6 +1,9 @@
+import uuid
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from app.schemas.common import DatetimeTZ7
 
 
 # ── Shared sub-models ─────────────────────────────────────────────────────────
@@ -172,3 +175,50 @@ class IndexingStatusItem(BaseModel):
 
 class IndexingStatusResponse(BaseModel):
     data: list[IndexingStatusItem]
+
+
+# ── App Knowledge Base & Permission Management ────────────────────────────────
+
+
+class AppKnowledgeBaseCreate(BaseModel):
+    dify_dataset_id: str
+    dify_dataset_name: str
+
+
+class AppKnowledgeBaseResponse(BaseModel):
+    id: uuid.UUID
+    dify_dataset_id: str
+    dify_dataset_name: str
+    created_at: DatetimeTZ7
+
+    model_config = {"from_attributes": True}
+
+
+class AppKnowledgeBaseListResponse(BaseModel):
+    data: list[AppKnowledgeBaseResponse]
+    total: int
+    page: int
+    limit: int
+    has_more: bool
+
+
+class PermissionCreate(BaseModel):
+    group_id: uuid.UUID | None = None
+    user_id: uuid.UUID | None = None
+    permission_level: str = Field("read", pattern=r"^(read|write|admin)$")
+
+
+class PermissionResponse(BaseModel):
+    id: uuid.UUID
+    knowledge_id: uuid.UUID
+    group_id: uuid.UUID | None = None
+    user_id: uuid.UUID | None = None
+    permission_level: str
+
+    model_config = {"from_attributes": True}
+
+
+class AllowedKnowledgeBase(BaseModel):
+    knowledge_id: uuid.UUID
+    dify_dataset_id: str
+    dify_dataset_name: str

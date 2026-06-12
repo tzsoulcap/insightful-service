@@ -263,3 +263,38 @@ class DifyService:
         )
         response.raise_for_status()
         return response.json()
+
+    # ── Retrieval ─────────────────────────────────────────────────────────────
+
+    async def retrieve_dataset(
+        self,
+        dataset_id: str,
+        query: str,
+        *,
+        top_k: int = 5,
+        score_threshold: float = 0.3,
+        score_threshold_enabled: bool = True,
+    ) -> list[dict]:
+        """Call Dify Knowledge API POST /datasets/{dataset_id}/retrieve.
+
+        Returns raw records list from the response.
+        Returns empty list on 404 (dataset not found / not accessible).
+        """
+        payload: dict = {
+            "query": query,
+            "retrieval_model": {
+                "search_method": "hybrid_search",
+                "reranking_enable": False,
+                "top_k": top_k,
+                "score_threshold_enabled": score_threshold_enabled,
+                "score_threshold": score_threshold,
+            },
+        }
+        response = await self._knowledge_request(
+            "POST", f"/datasets/{dataset_id}/retrieve", payload=payload
+        )
+        if response.status_code == 404:
+            logger.warning("Dataset %s not found on Dify, skipping.", dataset_id)
+            return []
+        response.raise_for_status()
+        return response.json().get("records", [])

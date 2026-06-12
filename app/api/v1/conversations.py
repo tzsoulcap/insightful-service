@@ -7,15 +7,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_dify_service, get_user_id
 from app.core.config import Settings, get_settings
+from app.core.database import get_db
 from app.core.dify_database import get_dify_db
+from app.repositories.citation import CitationRepository
 from app.schemas.conversation import (
+    CitationItem,
     ConversationDetailResponse,
     ConversationsResponse,
+    MessageItem,
     MessagesResponse,
     RenameConversationRequest,
 )
 from app.services.dify import DifyService
-from app.services.enrichment_service import enrich_messages
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +36,13 @@ _GET_USER_CONVERSATION_IDS = text("""
 @router.get("/messages", response_model=MessagesResponse)
 async def get_messages(
     conversation_id: str,
-    request: Request,
     user_id: Annotated[str, Depends(get_user_id)],
     service: Annotated[DifyService, Depends(get_dify_service)],
-    session: Annotated[AsyncSession, Depends(get_dify_db)],
-    settings: Annotated[Settings, Depends(get_settings)],
+    app_db: Annotated[AsyncSession, Depends(get_db)],
     first_id: str | None = None,
     limit: int = 20,
 ) -> MessagesResponse:
+    # 1. Fetch messages from Dify
     try:
         data = await service.get_messages(
             conversation_id=conversation_id,
@@ -54,15 +56,57 @@ async def get_messages(
             detail="Failed to retrieve messages from Dify",
         )
 
-    # Batch enrich all retriever_resources with page_number, file_name, pdf_url
-    await enrich_messages(
-        data=data,
-        session=session,
-        settings=settings,
-        pdf_url_builder=lambda fk: str(request.url_for("view_pdf", file_key=fk)),
-    )
+    # 2. Collect all message IDs from Dify response
+    raw_messages: list[dict] = data.get("data", [])
+    message_ids = [m["id"] for m in raw_messages if m.get("id")]
 
-    return MessagesResponse(**data)
+    # 3. Batch query citations from our own PostgreSQL
+    citation_repo = CitationRepository(app_db)
+    all_citations = await citation_repo.find_by_message_ids(message_ids)
+
+    # 4. Group citations by dify_message_id
+    grouped: dict[str, list[CitationItem]] = {}
+    for c in all_citations:
+        item = CitationItem(
+            position=c.position,
+            dify_dataset_id=c.dify_dataset_id,
+            dify_dataset_name=c.dify_dataset_name,
+            dify_document_id=c.dify_document_id,
+            dify_document_name=c.dify_document_name,
+            dify_segment_id=c.dify_segment_id,
+            segment_position=c.segment_position,
+            score=c.score,
+            file_name=c.file_name,
+            file_path=c.file_path,
+            page_no=c.page_no,
+            content=c.content,
+        )
+        grouped.setdefault(c.dify_message_id, []).append(item)
+
+    # 5. Build normalized MessageItem list with citations merged
+    messages: list[MessageItem] = []
+    for m in raw_messages:
+        mid = m.get("id", "")
+        messages.append(
+            MessageItem(
+                id=mid,
+                conversation_id=m.get("conversation_id", ""),
+                inputs=m.get("inputs", {}),
+                query=m.get("query", ""),
+                answer=m.get("answer", ""),
+                message_files=m.get("message_files", []),
+                feedback=m.get("feedback"),
+                retriever_resources=m.get("retriever_resources", []),
+                citations=grouped.get(mid, []),
+                created_at=m.get("created_at", 0),
+            )
+        )
+
+    return MessagesResponse(
+        limit=data.get("limit", limit),
+        has_more=data.get("has_more", False),
+        data=messages,
+    )
 
 
 @router.get("", response_model=ConversationsResponse)

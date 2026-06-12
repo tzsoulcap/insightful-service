@@ -11,6 +11,8 @@ from app.api.deps import get_dify_service
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.models.batch import Batch
+from app.models.knowledge_base import KnowledgeBase
+from app.repositories.knowledge_base import KnowledgeBaseRepository
 from app.schemas.knowledge_base import (
     CreateDocumentByTextRequest,
     CreateDocumentResponse,
@@ -63,12 +65,25 @@ async def list_knowledge_bases(
 async def create_knowledge_base(
     body: CreateKnowledgeBaseRequest,
     service: Annotated[DifyService, Depends(get_dify_service)],
+    session: Annotated[AsyncSession, Depends(get_db)],
 ) -> KnowledgeBaseItem:
     payload = body.model_dump()
     try:
         data = await service.create_dataset(payload)
     except Exception as exc:
         _handle_dify_error(exc)
+
+    # Auto-register into local knowledge_bases table so permissions can be set up immediately
+    repo = KnowledgeBaseRepository(session)
+    existing = await repo.get_by_dify_dataset_id(data["id"])
+    if existing is None:
+        kb = KnowledgeBase(
+            dify_dataset_id=data["id"],
+            dify_dataset_name=data["name"],
+        )
+        await repo.create(kb)
+        await session.commit()
+
     return KnowledgeBaseItem(**data)
 
 
@@ -89,11 +104,20 @@ async def update_knowledge_base(
     dataset_id: str,
     body: UpdateKnowledgeBaseRequest,
     service: Annotated[DifyService, Depends(get_dify_service)],
+    session: Annotated[AsyncSession, Depends(get_db)],
 ) -> KnowledgeBaseItem:
     try:
         data = await service.patch_dataset(dataset_id, {"name": body.name})
     except Exception as exc:
         _handle_dify_error(exc)
+
+    # ── Sync name to local knowledge_bases table ──────────────────────────────
+    repo = KnowledgeBaseRepository(session)
+    kb = await repo.get_by_dify_dataset_id(dataset_id)
+    if kb is not None and kb.dify_dataset_name != data["name"]:
+        kb.dify_dataset_name = data["name"]
+        await session.commit()
+
     return KnowledgeBaseItem(**data)
 
 
@@ -117,6 +141,13 @@ async def delete_knowledge_base(
 
     # ── Delete batch records (process_pdf cascades) ───────────────────────────
     await session.execute(sa_delete(Batch).where(Batch.dataset_id == dataset_id))
+
+    # ── Delete knowledge_bases record (permissions cascade) ───────────────────
+    repo = KnowledgeBaseRepository(session)
+    kb = await repo.get_by_dify_dataset_id(dataset_id)
+    if kb is not None:
+        await repo.delete(kb)
+
     await session.commit()
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)

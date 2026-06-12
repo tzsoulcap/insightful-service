@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -5,13 +7,21 @@ from app.core.security import hash_password, verify_password
 from app.models.user import User
 
 
-async def get_user_by_username(session: AsyncSession, username: str) -> User | None:
-    result = await session.execute(select(User).where(User.username == username))
+async def get_user_by_username(
+    session: AsyncSession, username: str, user_type: str = "local"
+) -> User | None:
+    result = await session.execute(
+        select(User).where(User.username == username, User.user_type == user_type)
+    )
     return result.scalar_one_or_none()
 
 
-async def get_user_by_id(session: AsyncSession, user_id: str) -> User | None:
-    result = await session.execute(select(User).where(User.id == user_id))
+async def get_user_by_id(session: AsyncSession, user_id: str | uuid.UUID) -> User | None:
+    try:
+        uid = uuid.UUID(str(user_id))
+    except ValueError:
+        return None
+    result = await session.execute(select(User).where(User.id == uid))
     return result.scalar_one_or_none()
 
 
@@ -66,11 +76,16 @@ async def get_all_users(
 
 
 async def create_user(
-    session: AsyncSession, username: str, password: str, role: str = "staff"
+    session: AsyncSession,
+    username: str,
+    password: str,
+    role: str = "user",
+    user_type: str = "local",
 ) -> User:
     user = User(
         username=username,
-        hashed_password=hash_password(password),
+        user_type=user_type,
+        hashed_password=hash_password(password) if password else None,
         role=role,
     )
     session.add(user)

@@ -1,20 +1,31 @@
+import uuid
+
 from pydantic import BaseModel, Field
 
 from app.schemas.common import DatetimeTZ7
 
 
+class UserCreateRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=150)
+    password: str = Field(..., min_length=8, max_length=128)
+    user_type: str = Field("local", pattern=r"^(local|ad)$")
+    role: str = Field("user", pattern=r"^(user|admin|super_admin)$")
+
+
 class UserRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=150)
     password: str = Field(..., min_length=8, max_length=128)
-    role: str = Field("staff", pattern=r"^(admin|staff|guest)$")
+    role: str = Field("user", pattern=r"^(user|admin|super_admin)$")
 
 
 class UserResponse(BaseModel):
-    id: str
+    id: uuid.UUID
     username: str
+    user_type: str
     role: str
+    is_active: bool
     created_at: DatetimeTZ7
-    updated_at: DatetimeTZ7
+    updated_at: DatetimeTZ7 | None = None
 
     model_config = {"from_attributes": True}
 
@@ -25,7 +36,12 @@ class Token(BaseModel):
 
 
 class UpdateRoleRequest(BaseModel):
-    role: str = Field(..., pattern=r"^(admin|staff|guest)$")
+    role: str = Field(..., pattern=r"^(user|admin|super_admin)$")
+
+
+class UpdateUserRequest(BaseModel):
+    role: str | None = Field(None, pattern=r"^(user|admin|super_admin)$")
+    is_active: bool | None = None
 
 
 class ResetPasswordRequest(BaseModel):
