@@ -61,7 +61,10 @@ class ProcessPdf(Base):
             name="chk_process_pdf_pdf_type",
         ),
         CheckConstraint(
-            "status IN ('pending', 'processing', 'completed', 'failed')",
+            "status IN ("
+            "'pending', 'processing', 'success', 'uploading', 'uploaded', "
+            "'error', 'upload_failed', 'completed', 'failed'"
+            ")",
             name="chk_process_pdf_status",
         ),
         CheckConstraint(
