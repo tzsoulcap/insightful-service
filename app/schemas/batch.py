@@ -1,3 +1,5 @@
+import uuid
+
 from pydantic import BaseModel
 
 from app.schemas.common import DatetimeTZ7
@@ -6,7 +8,7 @@ from app.schemas.common import DatetimeTZ7
 # ── Process PDF item ──────────────────────────────────────────────────────────
 
 class ProcessPdfResponse(BaseModel):
-    id: str
+    id: uuid.UUID
     filename: str
     pdf_type: str | None = None
     status: str
@@ -24,12 +26,12 @@ class ProcessPdfResponse(BaseModel):
 # ── Batch ─────────────────────────────────────────────────────────────────────
 
 class BatchResponse(BaseModel):
-    id: str
+    id: uuid.UUID
     dataset_id: str
     dataset_name: str
     status: str
     total_files: int
-    created_by: str | None = None
+    created_by: uuid.UUID | None = None
     scheduled_at: DatetimeTZ7 | None = None
     started_at: DatetimeTZ7 | None = None
     completed_at: DatetimeTZ7 | None = None
@@ -41,12 +43,12 @@ class BatchResponse(BaseModel):
 
 
 class BatchSummaryResponse(BaseModel):
-    id: str
+    id: uuid.UUID
     dataset_id: str
     dataset_name: str
     status: str
     total_files: int
-    created_by: str | None = None
+    created_by: uuid.UUID | None = None
     scheduled_at: DatetimeTZ7 | None = None
     started_at: DatetimeTZ7 | None = None
     completed_at: DatetimeTZ7 | None = None
@@ -67,9 +69,9 @@ class BatchListResponse(BaseModel):
 # ── List by dataset ───────────────────────────────────────────────────────────
 
 class BatchTrackItem(BaseModel):
-    id: str
+    id: uuid.UUID
     status: str
-    created_by: str | None = None
+    created_by: uuid.UUID | None = None
     total_files: int
     success_count: int
     failed_count: int
@@ -95,7 +97,7 @@ class BatchByDatasetResponse(BaseModel):
 # ── Process PDF list ──────────────────────────────────────────────────────────
 
 class ProcessPdfItem(BaseModel):
-    id: str
+    id: uuid.UUID
     filename: str
     pdf_type: str | None = None
     status: str
@@ -107,5 +109,5 @@ class ProcessPdfItem(BaseModel):
 
 
 class ProcessPdfListResponse(BaseModel):
-    batch_id: str
+    batch_id: uuid.UUID
     data: list[ProcessPdfItem]
